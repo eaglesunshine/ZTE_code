@@ -120,14 +120,24 @@ inline void output(Config &config)
 	for (auto it = success_goods.begin(); it != success_goods.end(); it++)	//规划成功的路径
 	{
 		cout << *it << endl;
+		int isfirst = true;
 		for (auto iter = config.Goods_info[*it].stations.begin(); iter != config.Goods_info[*it].stations.end(); iter++)
 		{
-			cout << *iter;
+			if (isfirst){
+				cout << *iter;
+				isfirst = false;
+			}
+			else cout << "," << *iter;
 		}
 		cout << endl;
+		isfirst = true;
 		for (auto iter = config.Goods_info[*it].trains.begin(); iter != config.Goods_info[*it].trains.end(); iter++)
 		{
-			cout << *iter;
+			if (isfirst){
+				cout << *iter;
+				isfirst = false;
+			}
+			else cout << "," << *iter;
 		}
 		cout << endl;
 	}
