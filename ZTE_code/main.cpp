@@ -5,10 +5,33 @@
 #include <sstream>
 #include <iomanip>
 #include <set>
+#include <tuple>
+#include <queue>
+#include <stack>
+#include <list>
 
 #define MAX 99999999
 
 using namespace std;
+
+/*###############Dijkstra###################*/
+const double INF_MAX = 9999999.9;
+
+double distTo[1000000];
+list<int> edgeTo[1000000];
+int V, E, coutSP = -1;
+map<int, vector<tuple<int, int, double>>> EWD;
+
+struct GreaterThanByDist
+{
+	bool operator()(const int i, const int j) const
+	{
+		return distTo[i] > distTo[j];
+	}
+};
+priority_queue<int, vector<int>, GreaterThanByDist> Minpq;
+
+/*###############Dijkstra###################*/
 
 //全局信息
 struct Global_info {
@@ -26,7 +49,7 @@ struct goods_info {
 	double weight;		//重量
 	vector<string> Through_stations;	//必经站点序列
 	vector<string> stations;	//传输站点路径
-	vector<string> trains;		//传输列车路径
+	vector<int> trains;		//传输列车路径
 };
 
 //config
@@ -48,6 +71,12 @@ struct Config {
 
 	//货物信息
 	map<string, goods_info> Goods_info;
+
+	//车站字符串id映射成数字id
+	map<string, int> Indexs_to_int;
+
+	//车站数字id映射成字符串id
+	map<int, string> Indexs_to_string;
 };
 
 //func
@@ -57,8 +86,23 @@ inline void process(Config &config, set<string> &Priority, set<string> &DisPrior
 inline void processPriority(set<string> &Priority, Config &config);	//规划有必经之路的货物任务
 inline void processDisPriority(set<string> &DisPriority, Config &config);	//规划没有有必经之路的货物任务
 
+/*###############Dijkstra###################*/
+inline void generateEWD(Config &config);
+inline int  GetNodeNum(string key, map<string, int> &mapNodes);
+inline void transferPath(Config &config, vector<int> &new_path, vector<string> &path);
+inline void transferTrackPath(Config &config, vector<string> &new_path, vector<string> &path);
+
+inline void relax(tuple<int, int, double> edge);
+inline void DijkstraSP(int s, int V);
+inline void dfs(int source, int vertex, stack<int> &path);
+inline void computeSP(int source, int vertex, vector<vector<int>> &path_all);
+inline void showEWD();
+/*###############Dijkstra###################*/
+
 int main()
 {
+	//computeSP(source, vertex);
+
 	//data
 	Config config;
 	set<string> Priority;
@@ -68,6 +112,8 @@ int main()
 	init(config, Priority, DisPriority);
 
 	//process
+	generateEWD(config);
+
 	process(config, Priority, DisPriority);
 
 	//output
@@ -88,13 +134,43 @@ void process(Config &config, set<string> &Priority, set<string> &DisPriority)
 //规划有必经之路的货物任务
 inline void processPriority(set<string> &Priority, Config &config)
 {
-	
+	//do nothing
 }
 
 //规划没有有必经之路的货物任务
 inline void processDisPriority(set<string> &DisPriority, Config &config)
 {
-	//do nothing
+	int max = 100;
+	int count = 0;
+	string start, end;
+	int v, w;
+	vector<vector<int>> path_all;
+	vector<string> path;
+	vector<string> track_path;
+	for (auto it = DisPriority.begin(); it != DisPriority.end(); it++)
+	{
+		++count;
+
+		//取起点、终点
+		start = config.Goods_info[*it].station_1;
+		end = config.Goods_info[*it].station_2;
+		v = config.Indexs_to_int[start];
+		w = config.Indexs_to_int[end];
+
+		//计算最短路径
+		computeSP(v, w, path_all);
+
+		//存储最短路径
+		transferPath(config, path_all[0], path);
+		transferTrackPath(config, path, track_path);
+		config.Goods_info[*it].stations.insert(config.Goods_info[*it].stations.begin(), track_path.begin(), track_path.end());
+		for (int i = 0; i < int(track_path.size()); i++)
+		{
+			config.Goods_info[*it].trains.push_back(1);
+		}
+
+		if (count == max) break;
+	}
 }
 
 inline void output(Config &config)
@@ -120,14 +196,32 @@ inline void output(Config &config)
 	for (auto it = success_goods.begin(); it != success_goods.end(); it++)	//规划成功的路径
 	{
 		cout << *it << endl;
+		int isfirst = true;
 		for (auto iter = config.Goods_info[*it].stations.begin(); iter != config.Goods_info[*it].stations.end(); iter++)
 		{
-			cout << *iter;
+			if (isfirst)
+			{
+				cout << *iter;
+				isfirst = false;
+			}
+			else
+			{
+				cout << "," << *iter;
+			}
 		}
 		cout << endl;
+		isfirst = true;
 		for (auto iter = config.Goods_info[*it].trains.begin(); iter != config.Goods_info[*it].trains.end(); iter++)
 		{
-			cout << *iter;
+			if (isfirst)
+			{
+				cout << *iter;
+				isfirst = false;
+			}
+			else
+			{
+				cout << "," << *iter;
+			}
 		}
 		cout << endl;
 	}
@@ -178,7 +272,14 @@ inline void init(Config &config, set<string> &Priority, set<string> &DisPriority
 			{
 				++sub_count;
 				if (sub_count == 1) num_1 = str;
-				if (sub_count == 2) config.Station_people[num_1] = atoi(str.c_str());
+				if (sub_count == 2)
+				{
+					config.Station_people[num_1] = atoi(str.c_str());
+
+					//建立车站字符串id到数字id的映射
+					int id_int = GetNodeNum(num_1, config.Indexs_to_int);
+					config.Indexs_to_string[id_int] = num_1;
+				}
 			}
 			else
 			{
@@ -241,3 +342,171 @@ inline void init(Config &config, set<string> &Priority, set<string> &DisPriority
 		if (count == sum) break;
 	}
 }
+
+/*###############Dijkstra###################*/
+inline void relax(tuple<int, int, double> edge)
+{
+	int v = get<0>(edge);
+	int w = get<1>(edge);
+	double weight = get<2>(edge);
+	if (distTo[w] > distTo[v] + weight) {
+		distTo[w] = distTo[v] + weight;
+		edgeTo[w].clear();
+		edgeTo[w].push_back(v);
+		Minpq.push(w);
+	}
+	else if (distTo[w] == distTo[v] + weight)
+	{
+		edgeTo[w].push_back(v);
+	}
+}
+
+inline void DijkstraSP(int s, int V)
+{
+	for (int v = 0; v < V; v++)
+		distTo[v] = INF_MAX;
+	distTo[s] = 0.0;
+
+	Minpq.push(s);
+	while (!Minpq.empty())
+	{
+		int v = Minpq.top();
+		Minpq.pop();
+		for (vector<tuple<int, int, double>>::iterator ii = EWD[v].begin();
+			ii != EWD[v].end();
+			ii++)
+		{
+			relax(*ii);
+		}
+	}
+}
+
+inline void dfs(int source, int vertex, stack<int> &path)
+{
+	coutSP++;
+	if (vertex == source)
+	{
+		coutSP = 0;
+		return;
+	}
+	for (list<int>::iterator ii = edgeTo[vertex].begin(); ii != edgeTo[vertex].end(); ii++)
+	{
+		if (coutSP == 0)  path.push(vertex);
+		path.push(*ii);
+		dfs(source, *ii, path);
+	}
+}
+
+inline void computeSP(int source, int vertex, vector<vector<int>> &path_all)
+{
+	path_all.clear();
+
+	DijkstraSP(source, V);
+
+	stack<int> path;
+	//showEWD();
+	dfs(source, vertex, path);
+
+	vector<int> new_path;
+	while (!path.empty())
+	{
+		new_path.push_back(path.top());
+		if (path.top() == source)
+		{
+			new_path.clear();			
+		}
+		if (path.top() == vertex)
+		{
+			path_all.push_back(new_path);
+		}		
+		path.pop();
+	}
+
+}
+
+inline void showEWD()
+{
+	cout << "EdgeWeightedDigraph : " << endl;
+	for (int v = 0; v < V; v++)
+	{
+		cout << v << " : ";
+		for (vector<tuple<int, int, double>>::iterator ii = EWD[v].begin();
+			ii != EWD[v].end();
+			ii++)
+		{
+			cout << get<0>(*ii) << "->" << get<1>(*ii) << " " << get<2>(*ii) << "  ";
+		}
+		cout << endl;
+	}
+}
+
+inline void generateEWD(Config &config)
+{
+	string start, end;
+	int v, w;
+	double weight;
+	for (auto it = config.Track_to_stations.begin(); it != config.Track_to_stations.end(); it++)
+	{
+		int count = 0;
+		for (auto iter = it->second.begin(); iter != it->second.end(); iter++)
+		{
+			++count;
+			if (count == 1) start = *iter;
+			else end = *iter;
+		}
+
+		//字符串id映射到数字id
+		v = config.Indexs_to_int[start];
+		w = config.Indexs_to_int[end];
+
+		weight = 1.0;
+		EWD[v].push_back(make_tuple(v, w, weight));
+		EWD[w].push_back(make_tuple(w, v, weight));
+	}
+
+	V = int(config.Station_people.size());
+	E = int(config.Track_to_stations.size());
+}
+
+inline int  GetNodeNum(string key, map<string, int> &mapNodes) {
+
+	map<string, int>::iterator iter;
+
+	iter = mapNodes.find(key);
+
+	if (iter != mapNodes.end()) {
+		return mapNodes[key];
+	}
+	else {
+		int nodeNum = int(mapNodes.size());
+		mapNodes.insert(std::pair<std::string, int>(key, nodeNum));
+		return nodeNum;
+	}
+
+}
+
+inline void transferPath(Config &config, vector<int> &new_path, vector<string> &path)
+{
+	path.clear();
+
+	for (auto it = new_path.begin(); it != new_path.end(); it++)
+	{
+		path.push_back(config.Indexs_to_string[*it]);
+	}
+}
+
+inline void transferTrackPath(Config &config, vector<string> &new_path, vector<string> &path)
+{
+	path.clear();
+
+	set<string> tmp_set;
+	for (int i = 0; i<int(new_path.size() - 1); i++)
+	{
+		tmp_set.clear();
+		tmp_set.insert(new_path[i]);
+		tmp_set.insert(new_path[i + 1]);
+
+		path.push_back(config.Station_to_tracks[tmp_set]);
+	}
+}
+/*###############Dijkstra###################*/
